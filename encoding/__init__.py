@@ -3,6 +3,26 @@ from __future__ import with_statement
 import requests, requests_toolbelt as toolbelt
 from adict import adict
 
+def bool_to_yesno(data):
+    '''
+    Convert boolean values to 'yes' and 'no' strings
+    for compliance with Encoding.com API
+    '''
+    if data is True:
+        return 'yes'
+    elif data is False:
+        return 'no'
+    elif isinstance(data, dict):
+        for k, v in data.iteritems():
+            data[k] = bool_to_yesno(v)
+        return data
+    elif isinstance(data, list):
+        for i, v in enumerate(data):
+            data[i] = bool_to_yesno(v)
+        return data
+    else:
+        return data
+
 try:
     from lxml import etree
     def format_query(**data):
@@ -31,7 +51,7 @@ try:
             return node
 
         data['notify_format'] = 'xml'
-        return {'xml': _build_tree(etree.Element('query'), data)}
+        return {'xml': _build_tree(etree.Element('query'), bool_to_yesno(data))}
 
     def parse_results(text):
         result = etree.fromstring(text)
@@ -41,8 +61,7 @@ except:
     from simplejson import dumps as tojson, loads as fromjson
     def format_query(**data):
         data['notify_format'] = 'json'
-        print data
-        return {'json': tojson({'query': data})}
+        return {'json': tojson({'query': bool_to_yesno(data)})}
 
     def parse_results(text):
         result = fromjson(text, object_hook=adict)

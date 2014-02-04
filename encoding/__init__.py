@@ -1,86 +1,122 @@
-import httplib, urllib
-from lxml import etree
+from __future__ import with_statement
+
+import httplib, urllib, requests, requests_toolbelt as toolbelt
+from adict import adict
+
+try:
+    from lxml import etree
+    def format_query(**data):
+        def _build_tree(node, data):
+
+            for k, v in data.items():
+                if isinstance(v, list):
+                    for item in v:
+                        element = etree.Element(k)
+                        if isinstance(item, dict):
+                            element = _build_tree(element, item)
+                        else:
+                            element.text = item
+
+                        node.append(element)
+
+                else:
+                    element = etree.Element(k)
+                    if isinstance(item, dict):
+                        element = _build_tree(element, item)
+                    else:
+                        element.text = item
+
+                    node.append(element)
+
+            return node
+
+        data['notify_format'] = 'xml'
+        return {'xml': _build_tree(etree.Element('query'), data)}
+
+    def parse_results(text):
+        result = etree.fromstring(text)
+        return result
+
+except:
+    from simplejson import dumps as tojson, loads as fromjson
+    def format_query(**data):
+        data['notify_format'] = 'json'
+        print data
+        return {'json': tojson({'query': data})}
+
+    def parse_results(text):
+        result = fromjson(text, object_hook=adict)
+        if 'errors' in result.response:
+            raise RuntimeError(result.response.errors)
+
+def decode_encoding_json(text):
+    from simplejson import JSONDecodeError
+    try:
+        return fromjson(text, object_hook=adict)
+
+    except JSONDecodeError:
+        text = text.strip()
+
+        if text.startswith('new Object('):
+            text = text[11:]
+        if text.endswith(')'):
+            text = text[:-1]
+        text = text.replace("'", '"')
+
+        return fromjson(text, object_hook=adict)
+
 
 ENCODING_API_URL = 'manage.encoding.com:80'
 
 class Encoding(object):
-    
+
     def __init__(self, userid, userkey, url=ENCODING_API_URL):
         self.url = url
         self.userid = userid
         self.userkey = userkey
 
-    def get_media_info(self, action='GetMediaInfo', ids=[], headers={'Content-Type':'application/x-www-form-urlencoded'}):
-        query = etree.Element('query')
+    def get_media_info(self, ids=[]):
 
-        nodes = {   'userid':self.userid,
-                    'userkey':self.userkey,
-                    'action':action,
-                    'mediaid':','.join(ids),
-                    }
+        query = format_query(userid=self.userid,
+                userkey=self.userkey,
+                action='GetMediaInfo',
+                mediaid=','.join(ids))
 
-        query = self._build_tree(etree.Element('query'), nodes) 
-        
-        results = self._execute_request(query, headers)
+        results = self._execute_request(query, {'Content-Type': 'application/x-www-form-urlencoded'})
 
-        return self._parse_results(results)
+        return parse_results(results)
 
-    def get_status(self, action='GetStatus', ids=[], extended='no', headers={'Content-Type':'application/x-www-form-urlencoded'}):
-        query = etree.Element('query')
+    def get_status(self, ids=[], extended=False):
+        query = format_query(
+                    userid=self.userid,
+                    userkey=self.userkey,
+                    action='GetStatus',
+                    extended='yes' if extended else 'no',
+                    mediaid=','.join(ids))
 
-        nodes = {   'userid':self.userid,
-                    'userkey':self.userkey,
-                    'action':action,
-                    'extended':extended,
-                    'mediaid':','.join(ids),
-                    }
+        results = self._execute_request(query, {'Content-Type': 'application/x-www-form-urlencoded'})
 
-        query = self._build_tree(etree.Element('query'), nodes) 
-        
-        results = self._execute_request(query, headers)
+        return parse_results(results)
 
-        return self._parse_results(results)
+    def add_media(self, source=[], formats=[], notify='', instant=False):
 
-    def add_media(self, action='AddMedia', source=[], notify='', formats=[], instant='no', headers={'Content-Type':'application/x-www-form-urlencoded'}):
+        query = format_query(
+                    userid=self.userid,
+                    userkey=self.userkey,
+                    action='AddMedia',
+                    source=source,
+                    notify=notify,
+                    instant='yes' if instant else 'no',
+                    format=formats)
 
-        query = etree.Element('query')
+        results = self._execute_request(query, {'Content-Type': 'application/x-www-form-urlencoded'})
 
-        nodes = {   'userid':self.userid,
-                    'userkey':self.userkey,
-                    'action':action,
-                    'source':source,
-                    'notify':notify,
-                    'instant':instant,
-                    }
+        return parse_results(results)
 
-        query = self._build_tree(etree.Element('query'), nodes) 
-        
-        for format in formats:
-            format_node = self._build_tree(etree.Element('format'), format) 
-            query.append(format_node)
 
-        results = self._execute_request(query, headers)
+    def _execute_request(self, query, headers, path='', method='POST'):
 
-        return self._parse_results(results)
-
-    def _build_tree(self, node, data):
-        
-        for k,v in data.items():
-            if isinstance(v, list):
-                for item in v:
-                    element = etree.Element(k)
-                    element.text = item
-                    node.append(element)
-            else:
-                element = etree.Element(k)
-                element.text = v
-                node.append(element)
-
-        return node
-
-    def _execute_request(self, xml, headers, path='', method='POST'):
-
-        params = urllib.urlencode({'xml':etree.tostring(xml)})
+        params = urllib.urlencode(query)
 
         conn = httplib.HTTPConnection(self.url)
         conn.request(method, path, params, headers)

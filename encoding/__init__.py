@@ -26,32 +26,29 @@ def bool_to_yesno(data):
 try:
     from lxml import etree
     def format_query(**data):
-        def _build_tree(node, data):
+        def _build_tree(name, data, parent=None):
 
-            for k, v in data.items():
-                if isinstance(v, list):
-                    for item in v:
-                        element = etree.Element(k)
-                        if isinstance(item, dict):
-                            element = _build_tree(element, item)
-                        else:
-                            element.text = item
-
-                        node.append(element)
-
-                else:
-                    element = etree.Element(k)
-                    if isinstance(item, dict):
-                        element = _build_tree(element, item)
-                    else:
-                        element.text = item
-
+            if isinstance(data, dict):
+                node = etree.Element(name)
+                for k, v in data.iteritems():
+                    element = _build_tree(k, v, node)
                     node.append(element)
+
+            elif isinstance(data, list):
+                node = parent or etree.Element('query')
+                for v in data:
+                    element = _build_tree(name, v, node)
+                    node.append(element)
+
+            else:
+                node = etree.Element(name)
+                node.text = data
+                return node
 
             return node
 
         data['notify_format'] = 'xml'
-        return {'xml': _build_tree(etree.Element('query'), bool_to_yesno(data))}
+        return {'xml': _build_tree('query', bool_to_yesno(data))}
 
     def parse_results(text):
         result = etree.fromstring(text)

@@ -1,6 +1,6 @@
 from __future__ import with_statement
 
-import httplib, urllib, requests, requests_toolbelt as toolbelt
+import requests, requests_toolbelt as toolbelt
 from adict import adict
 
 try:
@@ -115,7 +115,7 @@ class UploadedFile(object):
 from hashlib import md5, sha256
 from time import strftime, gmtime, time
 
-ENCODING_API_URL = 'manage.encoding.com:80'
+ENCODING_API_URL = 'https://manage.encoding.com'
 UPLOAD_URL = 'https://upload.encoding.com'
 
 class Encoding(object):
@@ -132,7 +132,7 @@ class Encoding(object):
                 action='GetMediaInfo',
                 mediaid=','.join(ids))
 
-        results = self._execute_request(query, {'Content-Type': 'application/x-www-form-urlencoded'})
+        results = self._execute_request(query)
 
         return parse_results(results)
 
@@ -144,7 +144,7 @@ class Encoding(object):
                     extended='yes' if extended else 'no',
                     mediaid=','.join(ids))
 
-        results = self._execute_request(query, {'Content-Type': 'application/x-www-form-urlencoded'})
+        results = self._execute_request(query)
 
         return parse_results(results)
 
@@ -159,22 +159,14 @@ class Encoding(object):
                     instant='yes' if instant else 'no',
                     format=formats)
 
-        results = self._execute_request(query, {'Content-Type': 'application/x-www-form-urlencoded'})
+        results = self._execute_request(query)
 
         return parse_results(results)
 
 
-    def _execute_request(self, query, headers, path='', method='POST'):
-
-        params = urllib.urlencode(query)
-
-        conn = httplib.HTTPConnection(self.url)
-        conn.request(method, path, params, headers)
-        response = conn.getresponse()
-        data = response.read()
-        conn.close()
-
-        return data
+    def _execute_request(self, query, path='', method='post'):
+        response = requests.request(method, self.url + path, data=query)
+        return response.text
 
     def upload_media(self, filename, upload_url=None):
         upload_url = upload_url or UPLOAD_URL

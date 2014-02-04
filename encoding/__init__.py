@@ -66,7 +66,57 @@ def decode_encoding_json(text):
         return fromjson(text, object_hook=adict)
 
 
+
+class UploadedFile(object):
+    def __init__(self, sid, upload_url=None):
+        self.sid = sid
+        self.upload_url = upload_url or UPLOAD_URL
+
+    @property
+    def progress(self):
+        return decode_encoding_json(requests.get(self.upload_url + '/progress', params={'X-Progress-ID': self.sid}).text)
+
+    @property
+    def fileinfo(self):
+        return decode_encoding_json(requests.get(self.upload_url + '/fileinfo.php', params={'sid': self.sid}).text)
+
+    @property
+    def s3info(self):
+        return decode_encoding_json(requests.get(self.upload_url + '/s3info.php', params={'sid': self.sid}).text)
+
+    def __str__(self):
+        return '<UploadedFile %s>' % self.sid
+
+    def wait(self):
+        from time import sleep
+
+        #print 'Step 1'
+        #while True:
+            #progress = self.progress
+            #print progress
+            #if progress['state'] == 'done':
+                #break
+            #sleep(5)
+
+        #print 'Step 2'
+        while True:
+            progress = self.s3info
+            #print progress
+            if progress['state'] == 'error':
+                raise RuntimeError('error uploading file to encoding.com (%r)' % progress)
+
+            if progress['state'] == 'done':
+                break
+
+            sleep(2)
+
+        return self.fileinfo
+
+from hashlib import md5, sha256
+from time import strftime, gmtime, time
+
 ENCODING_API_URL = 'manage.encoding.com:80'
+UPLOAD_URL = 'https://upload.encoding.com'
 
 class Encoding(object):
 
@@ -126,5 +176,38 @@ class Encoding(object):
 
         return data
 
-    def _parse_results(self, results):
-        return etree.fromstring(results)
+    def upload_media(self, filename, upload_url=None):
+        upload_url = upload_url or UPLOAD_URL
+
+        params = self._signature(filename)
+        data = toolbelt.MultipartEncoder(params)
+
+        response = requests.post(upload_url + '/upload',
+                data=data,
+                headers={'Content-Type': data.content_type})
+
+        #return parse_results(response.text)
+        assert response.status_code == 200
+
+        return UploadedFile(params['sid'], upload_url)
+
+    def _signature(self, filename):
+
+        userfile = (filename, open(filename, 'rb'), 'application/octet-stream')
+        timestamp = strftime('%Y-%m-%d %H:%M:%S %z', gmtime())
+        sid = md5(str(self.userid) + str(time())).hexdigest()
+        signature = sha256(
+            timestamp +
+            sid +
+            self.userkey
+            ).hexdigest()
+        uid = str(self.userid)
+
+        return dict(
+                uid=uid,
+                sid=sid,
+                userfile=userfile,
+                timestamp=timestamp,
+                signature=signature
+                )
+

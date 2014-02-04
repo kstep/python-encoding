@@ -52,7 +52,11 @@ try:
 
     def parse_results(text):
         result = etree.fromstring(text)
-        return result
+
+        if hasattr(result.response, 'errors'):
+            raise RuntimeError(result.response.errors)
+
+        return result.response
 
 except:
     from simplejson import dumps as tojson, loads as fromjson
@@ -62,8 +66,11 @@ except:
 
     def parse_results(text):
         result = fromjson(text, object_hook=adict)
+
         if 'errors' in result.response:
             raise RuntimeError(result.response.errors)
+
+        return result.response
 
 def decode_encoding_json(text):
     from simplejson import JSONDecodeError
